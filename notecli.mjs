@@ -1,6 +1,8 @@
 import sqlite3 from 'sqlite3';
 import inquirer from 'inquirer';
 
+sqlite3.verbose();
+
 // Initialize the database connection
 const db = new sqlite3.Database('./notes.db', (err) => {
   if (err) {
@@ -44,37 +46,43 @@ const initDB = async () => {
 
 // Main loop of the application
 const main = async () => {
-  await initDB();
+  try {
+    await initDB();
+    while (true) {
+      const { action } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'action',
+          message: 'What do you want to do?',
+          choices: ['Add Note', 'View Notes', 'Edit Note', 'Delete Note', 'Search Notes', 'Exit'],
+        },
+      ]);
 
-  while (true) {
-    const { action } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'action',
-        message: 'What do you want to do?',
-        choices: ['Add Note', 'View Notes', 'Edit Note', 'Delete Note', 'Exit'],
-      },
-    ]);
-
-    switch (action) {
-      case 'Add Note':
-        await addNote();
-        break;
-      case 'View Notes':
-        await viewNotes();
-        break;
-      case 'Edit Note':
-        await editNote();
-        break;
-      case 'Delete Note':
-        await deleteNote();
-        break;
-      case 'Exit':
-        console.log('Goodbye!');
-        db.close();
-        process.exit(0);
-        break;
+      switch (action) {
+        case 'Add Note':
+          await addNote();
+          break;
+        case 'View Notes':
+          await viewNotes();
+          break;
+        case 'Edit Note':
+          await editNote();
+          break;
+        case 'Delete Note':
+          await deleteNote();
+          break;
+        case 'Search Notes':
+          await searchNotes();
+          break;
+        case 'Exit':
+          console.log('Goodbye!');
+          db.close();
+          process.exit(0);
+          break;
+      }
     }
+  } catch (err) {
+    console.error('Unexpected error:', err.message);
   }
 };
 
@@ -110,13 +118,23 @@ const viewNotes = async () => {
     if (rows.length === 0) {
       console.log('No notes available.');
     } else {
-      console.log('\nNotes:');
-      rows.forEach((note) => {
-        console.log(`ID: ${note.id} | Title: ${note.title} | Content: ${note.content}`);
-      });
+      console.table(rows);
     }
   } catch (err) {
     console.error('Error retrieving notes:', err.message);
+  }
+};
+
+// Function to search notes
+const searchNotes = async () => {
+  const { query } = await inquirer.prompt([
+    { type: 'input', name: 'query', message: 'Enter search keyword:' },
+  ]);
+  try {
+    const rows = await all('SELECT * FROM notes WHERE title LIKE ? OR content LIKE ?', [`%${query}%`, `%${query}%`]);
+    rows.length ? console.table(rows) : console.log('No matching notes found.');
+  } catch (err) {
+    console.error('Error searching notes:', err.message);
   }
 };
 
@@ -143,7 +161,6 @@ const editNote = async () => {
       },
     ]);
 
-    // Find the selected note to prefill the current values
     const selectedNote = rows.find((note) => note.id === noteId);
 
     const answers = await inquirer.prompt([
@@ -174,41 +191,10 @@ const editNote = async () => {
   }
 };
 
-// Function to delete a note
-const deleteNote = async () => {
-  try {
-    const rows = await all('SELECT * FROM notes');
-    if (rows.length === 0) {
-      console.log('No notes available to delete.');
-      return;
-    }
-
-    const choices = rows.map((note) => ({
-      name: `ID: ${note.id} | Title: ${note.title} | Content: ${note.content}`,
-      value: note.id,
-    }));
-
-    const { noteId } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'noteId',
-        message: 'Select the note you want to delete:',
-        choices,
-      },
-    ]);
-
-    await run('DELETE FROM notes WHERE id = ?', [noteId]);
-    console.log('Note deleted successfully!');
-  } catch (err) {
-    console.error('Error deleting note:', err.message);
-  }
-};
-
-// Ensure proper database closure on app termination (Ctrl+C)
+process.on('exit', () => db.close());
 process.on('SIGINT', () => {
-  console.log('\nExiting...');
-  db.close();
-  process.exit();
+  console.log('\nClosing database...');
+  db.close(() => process.exit(0));
 });
 
 main();
