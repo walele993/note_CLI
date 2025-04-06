@@ -10,7 +10,7 @@ const db = new sqlite3.Database('./notes.db', (err) => {
     process.exit(1);
   }
 }); 
-
+ 
 // Promisified database functions for cleaner async/await usage
 const run = (sql, params = []) =>
   new Promise((resolve, reject) => {
